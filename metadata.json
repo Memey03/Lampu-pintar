@@ -1,0 +1,6 @@
+{
+  "name": "Smart IoT Lamp Dashboard",
+  "description": "MQTT-based IoT dashboard for monitoring humidity, temperature, and controlling 4 lamps via WebSockets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

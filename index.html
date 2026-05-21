@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart IoT Lamp Dashboard</title>
+    <!-- MQTT JS CDN -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        :root {
+            --bg: #0d0d0f;
+            --card-bg: #16161a;
+            --text: #e0e0e0;
+            --pink: #ff007f;
+            --green: #39ff14;
+            --border: #2d2d35;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            height: 70px;
+            padding: 0 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            background: rgba(22, 22, 26, 0.8);
+            flex-shrink: 0;
+        }
+
+        .status-badge {
+            display: flex; align-items: center; gap: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
+        }
+
+        .dot {
+            width: 8px; height: 8px; border-radius: 50%; background-color: #64748b;
+        }
+
+        .dot.online {
+            background-color: var(--green); box-shadow: 0 0 10px var(--green);
+        }
+
+        .main-layout {
+            flex: 1; display: grid; grid-template-columns: 1fr 340px; gap: 24px; padding: 24px; overflow: hidden;
+        }
+
+        .left-column {
+            display: flex; flex-direction: column; gap: 24px; overflow-y: auto; padding-right: 8px;
+        }
+
+        .left-column::-webkit-scrollbar { width: 6px; }
+        .left-column::-webkit-scrollbar-track { background: transparent; }
+        .left-column::-webkit-scrollbar-thumb { background-color: #333; border-radius: 3px; }
+
+        .lamp-grid {
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
+        }
+
+        .lamp-card {
+            background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; transition: all 0.3s;
+        }
+
+        .lamp-card.active {
+            border-color: var(--pink); box-shadow: 0 0 20px rgba(255, 0, 127, 0.1);
+        }
+
+        .card-header {
+            display: flex; justify-content: space-between; align-items: flex-start;
+        }
+
+        .icon-box {
+            width: 48px; height: 48px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); display: flex; align-items: center; justify-content: center; transition: all 0.3s;
+        }
+
+        .lamp-icon { width: 24px; height: 24px; fill: var(--text); transition: fill 0.3s ease;}
+        
+        .lamp-card.active .icon-box {
+            color: var(--pink); background: rgba(255, 0, 127, 0.1);
+        }
+
+        .lamp-card.active .lamp-icon {
+            fill: var(--pink);
+        }
+
+        .toggle-btn {
+            padding: 6px 16px; border-radius: 100px; border: 1px solid var(--border); background: transparent; color: white; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s;
+        }
+
+        .lamp-card.active .toggle-btn {
+            background: var(--pink); border-color: var(--pink);
+        }
+
+        .sensor-panel {
+            display: flex; flex-direction: column; gap: 24px; height: 100%; overflow: hidden;
+        }
+
+        .stat-card {
+            background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 20px; display: flex; align-items: center; gap: 20px; flex-shrink: 0;
+        }
+
+        .stat-value {
+            font-size: 32px; font-weight: 700; color: white;
+        }
+
+        .stat-label {
+            font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.5px;
+        }
+
+        .pink-text { color: var(--pink); }
+        .green-text { color: var(--green); }
+
+        .controls-row {
+            display: flex; gap: 12px; margin-top: auto; flex-wrap: wrap;
+        }
+
+        .action-btn {
+            flex: 1 1 100px; height: 44px; border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg); color: white; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+        }
+
+        .action-btn:hover { background: rgba(255,255,255,0.05); }
+        .action-btn:active { transform: scale(0.98); }
+        .action-btn.green { border-color: var(--green); color: var(--green); }
+        .action-btn.green:hover { background: rgba(57, 255, 20, 0.1); }
+        .action-btn.pink { border-color: var(--pink); color: var(--pink); }
+        .action-btn.pink:hover { background: rgba(255, 0, 127, 0.1); }
+        .action-btn.stop { border-color: #ff4444; color: #ff4444; }
+        .action-btn.stop:hover { background: rgba(255, 68, 68, 0.1); }
+
+        .activity-log {
+            flex: 1; background: #000; border: 1px solid var(--border); border-radius: 16px; padding: 16px; font-family: 'Courier New', Courier, monospace; font-size: 11px; display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        .log-header {
+            font-size: 10px; color: #555; text-transform: uppercase; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 8px; flex-shrink: 0;
+        }
+
+        .log-window {
+            flex: 1; overflow-y: auto; display: flex; flex-direction: column; padding-right: 8px; gap: 6px;
+        }
+
+        .log-entry { line-height: 1.4; color: #aaa; }
+        .log-time { color: #555; margin-right: 6px; }
+        .log-message { color: #e0e0e0; }
+
+        .log-window::-webkit-scrollbar { width: 6px; }
+        .log-window::-webkit-scrollbar-track { background: transparent; }
+        .log-window::-webkit-scrollbar-thumb { background-color: #333; border-radius: 3px; }
+
+        @media (max-width: 800px) {
+            .main-layout { grid-template-columns: 1fr; overflow: auto;}
+            body { overflow: auto; height: auto; }
+            .left-column { overflow-y: visible; }
+            .lamp-grid { grid-template-columns: 1fr; }
+            .sensor-panel { height: auto; overflow: visible; }
+            .activity-log { min-height: 250px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1 style="font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">IOT<span class="pink-text">LAMP</span> DASHBOARD</h1>
+        <p style="font-size: 11px; color: #666; margin-top: 2px;">ESP32 Core Control System</p>
+    </div>
+    <div class="status-badge">
+        <div class="status-dot dot" id="statusDot"></div>
+        <span id="statusText">MQTT OFFLINE</span>
+    </div>
+</div>
+
+<div class="main-layout">
+    <!-- Left Column -->
+    <div class="left-column">
+        <div class="lamp-grid" id="lampContainer">
+            <!-- Lamps generated via JS -->
+        </div>
+        
+        <div class="controls-row">
+            <button class="action-btn green" onclick="semuaOn()">SEMUA ON</button>
+            <button class="action-btn" onclick="semuaOff()">SEMUA OFF</button>
+            <button class="action-btn pink" onclick="sendVariant(1)">VARIANT 1</button>
+            <button class="action-btn pink" onclick="sendVariant(2)">VARIANT 2</button>
+            <button class="action-btn stop" onclick="stopVariant()">STOP ALL</button>
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    <div class="sensor-panel">
+        <div class="stat-card">
+            <div style="width: 4px; height: 40px; background: var(--pink); border-radius: 4px;"></div>
+            <div>
+                <div class="stat-label">Suhu Ruangan</div>
+                <div class="stat-value" id="tempVal">--<span style="font-size: 18px; font-weight: 400; color: #555;">°C</span></div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div style="width: 4px; height: 40px; background: var(--green); border-radius: 4px;"></div>
+            <div>
+                <div class="stat-label">Kelembapan</div>
+                <div class="stat-value" id="humVal">--<span style="font-size: 18px; font-weight: 400; color: #555;">%</span></div>
+            </div>
+        </div>
+        
+        <div class="activity-log">
+            <div class="log-header">Activity Log Stream</div>
+            <div class="log-window" id="logBox">
+                <!-- Logs appended here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // JS Logic
+    const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt';
+    const TOPIC_RELAY = 'smarthome/relay';
+    const TOPIC_SENSOR = 'smarthome/sensor';
+
+    let client = null;
+    let lampStates = [false, false, false, false];
+
+    // SVG string for the lamp icon
+    const lampSvg = `
+        <svg class="lamp-icon" viewBox="0 0 24 24">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm2.83 13H9.17v-1.12L8.5 13.4C7.26 12.51 6.5 11 6.5 9.33 6.5 6.39 8.89 4 11.83 4c2.94 0 5.33 2.39 5.33 5.33 0 1.67-.76 3.18-2 4.07l-.67.48v1.12zM15 20h-6v1c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1z"/>
+        </svg>
+    `;
+
+    function buildLampGrid() {
+        const container = document.getElementById('lampContainer');
+        for (let i = 0; i < 4; i++) {
+            const num = i + 1;
+            const card = document.createElement('div');
+            card.className = 'lamp-card';
+            card.id = `lampCard${i}`;
+            
+            // Add sub-labels matching design
+            let subLabel = "";
+            if (num === 1) subLabel = "Ruang Tamu";
+            if (num === 2) subLabel = "Dapur Utama";
+            if (num === 3) subLabel = "Kamar Tidur";
+            if (num === 4) subLabel = "Teras Depan";
+
+            card.innerHTML = `
+                <div class="card-header">
+                    <div class="icon-box">${lampSvg}</div>
+                    <button class="toggle-btn" id="toggle${i}" onclick="toggleLamp(${i})">OFF</button>
+                </div>
+                <div>
+                    <h3 style="margin-top: 20px; font-weight: 600;">Lampu ${num}</h3>
+                    <p style="font-size: 12px; color: #666; margin-top: 4px;">${subLabel}</p>
+                </div>
+            `;
+            container.appendChild(card);
+        }
+    }
+
+    function addLog(message) {
+        const logBox = document.getElementById('logBox');
+        const time = new Date().toLocaleTimeString('en-US', { hour12: false });
+        
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        
+        // Highlight specific keywords to match the High Density aesthetic
+        let formattedMessage = message;
+        if (message.includes('RECV') || message.includes('[Sensor]')) {
+             formattedMessage = '<span class="green-text">RECV:</span> ' + message.replace('[Sensor]', '').trim();
+        } else if (message.includes('Command Sent')) {
+             formattedMessage = '<span class="pink-text">SEND:</span> ' + message.replace('[Command Sent] >>', '').trim();
+        } else if (message.includes('Connected')) {
+             formattedMessage = '<span class="green-text">SYSTEM:</span> ' + message;
+        }
+
+        entry.innerHTML = '<span class="log-time">[' + time + ']</span><span class="log-message">' + formattedMessage + '</span>';
+        
+        logBox.prepend(entry);
+    }
+
+    function initDashboard() {
+        buildLampGrid();
+        addLog('Initializing MQTT connection...');
+        const clientId = 'web_client_' + Math.random().toString(16).substr(2, 8);
+        
+        if (typeof mqtt !== 'undefined') {
+            connectMQTT(clientId);
+        } else {
+            const check = setInterval(() => {
+                if (typeof mqtt !== 'undefined') {
+                    clearInterval(check);
+                    connectMQTT(clientId);
+                }
+            }, 100);
+        }
+    }
+
+    function connectMQTT(clientId) {
+        client = mqtt.connect(BROKER_URL, { clientId: clientId });
+
+        client.on('connect', () => {
+            document.getElementById('statusDot').classList.add('online');
+            document.getElementById('statusText').innerText = 'MQTT ONLINE';
+            addLog('Connected to broker: ' + BROKER_URL);
+            
+            client.subscribe(TOPIC_SENSOR, (err) => {
+                if (!err) {
+                    addLog('Subscribed to topic: ' + TOPIC_SENSOR);
+                }
+            });
+        });
+
+        client.on('message', (topic, message) => {
+            const payload = message.toString();
+            if (topic === TOPIC_SENSOR) {
+                parseSensorData(payload);
+                addLog('[Sensor] ' + payload);
+            }
+        });
+
+        client.on('close', () => {
+            document.getElementById('statusDot').classList.remove('online');
+            document.getElementById('statusText').innerText = 'MQTT OFFLINE';
+        });
+    }
+
+    function parseSensorData(data) {
+        try {
+            // "Suhu: 27.5C | Kelembapan: 65.2%"
+            const parts = data.split('|');
+            if (parts.length >= 2) {
+                let tempStr = parts[0].replace('Suhu:', '').trim();
+                let humStr = parts[1].replace('Kelembapan:', '').trim();
+                
+                // Preserve the unit styling for High Density
+                tempStr = tempStr.replace('C', '').trim();
+                humStr = humStr.replace('%', '').trim();
+                
+                document.getElementById('tempVal').innerHTML = tempStr + '<span style="font-size: 18px; font-weight: 400; color: #555;">°C</span>';
+                document.getElementById('humVal').innerHTML = humStr + '<span style="font-size: 18px; font-weight: 400; color: #555;">%</span>';
+            } else {
+                 document.getElementById('tempVal').innerText = data;
+            }
+        } catch(e) {
+            console.error('Parse error', e);
+        }
+    }
+
+    function publishCommand(cmd) {
+        if (client && client.connected) {
+            client.publish(TOPIC_RELAY, cmd);
+            addLog('[Command Sent] >> ' + cmd);
+        } else {
+            addLog('[Warning] Cannot send ' + cmd + ' - Offline');
+        }
+    }
+
+    function toggleLamp(index) {
+        lampStates[index] = !lampStates[index];
+        updateLampUI(index);
+        const cmd = 'relay' + (index + 1) + '_' + (lampStates[index] ? 'on' : 'off');
+        publishCommand(cmd);
+    }
+
+    function updateLampUI(index) {
+        const card = document.getElementById('lampCard' + index);
+        const toggle = document.getElementById('toggle' + index);
+        
+        if (lampStates[index]) {
+            card.classList.add('active');
+            toggle.innerText = 'ON';
+        } else {
+            card.classList.remove('active');
+            toggle.innerText = 'OFF';
+        }
+    }
+
+    function semuaOn() {
+        lampStates = [true, true, true, true];
+        for (let i = 0; i < 4; i++) updateLampUI(i);
+        publishCommand('all_on');
+    }
+
+    function semuaOff() {
+        lampStates = [false, false, false, false];
+        for (let i = 0; i < 4; i++) updateLampUI(i);
+        publishCommand('all_off');
+    }
+
+    function sendVariant(num) {
+        publishCommand('variant' + num);
+    }
+
+    function stopVariant() {
+        publishCommand('variant_stop');
+    }
+
+    // Start on load
+    window.onload = initDashboard;
+</script>
+</body>
+</html>
