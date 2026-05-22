@@ -134,6 +134,7 @@
         .action-btn.green:hover { background: rgba(57, 255, 20, 0.1); }
         .action-btn.pink { border-color: var(--pink); color: var(--pink); }
         .action-btn.pink:hover { background: rgba(255, 0, 127, 0.1); }
+        .action-btn.pink.active { background: var(--pink); color: white; box-shadow: 0 0 15px rgba(255, 0, 127, 0.4); }
         .action-btn.stop { border-color: #ff4444; color: #ff4444; }
         .action-btn.stop:hover { background: rgba(255, 68, 68, 0.1); }
 
@@ -190,8 +191,8 @@
         <div class="controls-row">
             <button class="action-btn green" onclick="semuaOn()">SEMUA ON</button>
             <button class="action-btn" onclick="semuaOff()">SEMUA OFF</button>
-            <button class="action-btn pink" onclick="sendVariant(1)">VARIANT 1</button>
-            <button class="action-btn pink" onclick="sendVariant(2)">VARIANT 2</button>
+            <button class="action-btn pink" id="btnVariant1" onclick="sendVariant(1)">VARIANT 1</button>
+            <button class="action-btn pink" id="btnVariant2" onclick="sendVariant(2)">VARIANT 2</button>
             <button class="action-btn stop" onclick="stopVariant()">STOP ALL</button>
         </div>
     </div>
@@ -399,11 +400,20 @@
     }
 
     function sendVariant(num) {
-        publishCommand('variant_' + num);
+        publishCommand('variant' + num);
+        
+        // Visual interaction state
+        document.getElementById('btnVariant1').classList.remove('active');
+        document.getElementById('btnVariant2').classList.remove('active');
+        document.getElementById('btnVariant' + num).classList.add('active');
     }
 
     function stopVariant() {
         publishCommand('variant_stop');
+        
+        // Clear visual states
+        document.getElementById('btnVariant1').classList.remove('active');
+        document.getElementById('btnVariant2').classList.remove('active');
     }
 
     // Start on load
